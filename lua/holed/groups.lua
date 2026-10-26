@@ -30,7 +30,7 @@ return function(c, styles)
     DiffAdd = { bg = c.diff_add }, -- Diff mode: added line
     DiffChange = { bg = c.diff_change }, -- Diff mode: changed line
     DiffDelete = { fg = c.nontext, bg = c.diff_delete }, -- Diff mode: deleted line
-    DiffText = { fg = c.bg, bg = c.diff_text }, -- Diff mode: changed text within a changed line
+    DiffText = { bg = c.diff_text }, -- Diff mode: changed text within a changed line
     DiffTextAdd = { link = "DiffText" }, -- Diff mode: added text within a changed line
     EndOfBuffer = { link = "NonText" }, -- Filler lines (~) after the end of the buffer
     ErrorMsg = { fg = c.error }, -- Error messages on the command line

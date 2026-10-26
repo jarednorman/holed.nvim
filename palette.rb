@@ -25,6 +25,10 @@ ACCENT_CHROMA = 0.09        # OKLCH C shared by every accent
 BRIGHT_LIGHTNESS_BOOST = 0.08 # bright (ANSI 8-15) variants: accent L plus this
 TINT_LIGHTNESS = 0.24       # tints: a hue-cast grey for line backgrounds
 TINT_CHROMA = 0.035
+TINT_DIM_LIGHTNESS = 0.26   # dimmed tints: slightly lighter, a third of the chroma
+TINT_DIM_CHROMA = 0.012
+MID_LIGHTNESS = 0.55        # mid-tones: readable as text on black and as a bg under fg
+MID_CHROMA = 0.11
 
 # ANSI slots 0-15. Neutrals by name; accents by name, or [:bright, name].
 TERMINAL = [
@@ -185,13 +189,21 @@ def tints
   accent_hues.map { |h| accent_swatch(h, TINT_LIGHTNESS, TINT_CHROMA, prefix: 'tint') }
 end
 
+def tint_dims
+  accent_hues.map { |h| accent_swatch(h, TINT_DIM_LIGHTNESS, TINT_DIM_CHROMA, prefix: 'dim') }
+end
+
+def mids
+  accent_hues.map { |h| accent_swatch(h, MID_LIGHTNESS, MID_CHROMA, prefix: 'mid') }
+end
+
 # The whole palette as nested hashes of hex strings, keyed by stable names.
 def palette
   by_key = ->(swatches) { swatches.to_h { |s| [s.key, s.hex] } }
   base = by_key.(neutrals).merge(by_key.(accents))
   bright = by_key.(brights)
   term = TERMINAL.map { |slot| slot.is_a?(Array) ? bright.fetch(slot[1]) : base.fetch(slot) }
-  { base: base, bright: bright, tint: by_key.(tints), term: term }
+  { base: base, bright: bright, tint: by_key.(tints), tint_dim: by_key.(tint_dims), mid: by_key.(mids), term: term }
 end
 
 # ---------------------------------------------------------------------------
@@ -216,6 +228,12 @@ if __FILE__ == $PROGRAM_NAME
   puts
   puts "Tints (L=#{TINT_LIGHTNESS} C=#{TINT_CHROMA})"
   tints.each { |s| puts render(s) }
+  puts
+  puts "Dimmed tints (L=#{TINT_DIM_LIGHTNESS} C=#{TINT_DIM_CHROMA})"
+  tint_dims.each { |s| puts render(s) }
+  puts
+  puts "Mid-tones (L=#{MID_LIGHTNESS} C=#{MID_CHROMA})"
+  mids.each { |s| puts render(s) }
   puts
   puts 'Terminal'
   p = palette

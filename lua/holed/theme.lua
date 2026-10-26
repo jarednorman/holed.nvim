@@ -48,7 +48,9 @@ local c = {
   diff_add = p.tint.green,
   diff_change = p.tint.yellow,
   diff_delete = p.tint.red,
-  diff_text = p.yellow, -- fill; text on it is bg
+  diff_text = p.mid.yellow, -- bg behind changed words; normal text on top
+  diff_add_word = p.mid.green, -- bg behind added words, or fg for "+n" stats
+  diff_delete_word = p.mid.red, -- bg behind removed words, or fg for "-n" stats
 
   -- Misc.
   search = p.yellow, -- fill; text on it is bg

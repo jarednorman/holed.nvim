@@ -47,7 +47,7 @@ Call `setup()` before `colorscheme holed`.
 ## How it is built
 
 - `palette.rb` is the single source of colour values: the neutral ramp, the
-  accent wheel, bright and tint variants, and the 16-slot terminal mapping.
+  accent wheel and its derived steps, and the 16-slot terminal mapping.
   `ruby palette.rb` previews it in the terminal.
 - `make generate` renders it into `lua/holed/palette.lua` and
   `extras/ghostty/holed`. Those files are generated; do not edit them.
@@ -55,6 +55,21 @@ Call `setup()` before `colorscheme holed`.
   `error`, ...). It is the only hand-written file that names a palette key.
 - `lua/holed/groups.lua` defines the built-in highlight groups from roles.
 - `lua/holed/plugins/*.lua` hold plugin groups, one file per plugin.
+
+### The accent ramp
+
+Every accent has five steps, all in `lua/holed/palette.lua`:
+
+| key | OKLCH | use |
+|---|---|---|
+| `tint_dim.<hue>` | L 0.26, C 0.012 | line background in a de-emphasised diff |
+| `tint.<hue>` | L 0.24, C 0.035 | line background (DiffAdd, diagnostic virtual text) |
+| `mid.<hue>` | L 0.55, C 0.11 | background behind changed words with normal text on top, or text on black (`+12 -3` stats) |
+| `<hue>` | L 0.68–0.84, C 0.09 | text |
+| `bright.<hue>` | accent L +0.08 | ANSI bright slots |
+
+Tools outside Neovim (a Claude Code theme, a jj config) can read these keys
+directly from the generated file.
 
 ### Adding a plugin
 
