@@ -1,9 +1,11 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# Generates the "holed" palette: a neutral gradient from #000000 to #ffffff
-# plus a set of accent colours spaced geometrically around the OKLCH hue wheel.
-# Prints each colour as a swatch using 24-bit terminal colour sequences.
+# The holed palette: a neutral gradient from #000000 to #ffffff plus accents
+# spaced geometrically around the OKLCH hue wheel, with derived bright and
+# tint variants and the 16-slot terminal mapping. Everything that is a colour
+# value in holed comes from this file; generate.rb renders it into Lua and
+# terminal configs. Run it directly to preview the palette as swatches.
 
 # ---------------------------------------------------------------------------
 # Tunables
@@ -19,6 +21,17 @@ ACCENT_LIGHTNESS = 0.76     # mean OKLCH L of the accents (0..1)
 ACCENT_LIGHTNESS_SWING = 0.08 # L follows a cosine: +swing at PEAK_HUE, -swing opposite
 ACCENT_LIGHTNESS_PEAK_HUE = 95.0 # hue where the accents are lightest (yellow)
 ACCENT_CHROMA = 0.09        # OKLCH C shared by every accent
+
+BRIGHT_LIGHTNESS_BOOST = 0.08 # bright (ANSI 8-15) variants: accent L plus this
+TINT_LIGHTNESS = 0.24       # tints: a hue-cast grey for line backgrounds
+TINT_CHROMA = 0.035
+
+# ANSI slots 0-15. Neutrals by name; accents by name, or [:bright, name].
+TERMINAL = [
+  :gray1, :red, :green, :yellow, :blue, :purple, :cyan, :gray6,
+  :gray4, %i[bright red], %i[bright green], %i[bright yellow],
+  %i[bright blue], %i[bright purple], %i[bright cyan], :white
+].freeze
 
 # ---------------------------------------------------------------------------
 # Colour maths (sRGB <-> OKLab <-> OKLCH)
@@ -99,7 +112,7 @@ end
 # ---------------------------------------------------------------------------
 # Palette generation
 # ---------------------------------------------------------------------------
-Swatch = Struct.new(:name, :rgb) do
+Swatch = Struct.new(:key, :label, :rgb) do
   def hex = Color.to_hex(rgb)
 end
 
@@ -115,25 +128,25 @@ def neutral_lightness(i)
   l
 end
 
-def neutral_gradient
+def neutrals
   Array.new(NEUTRAL_STEPS) do |i|
     l = neutral_lightness(i)
     chroma = NEUTRAL_TINT_CHROMA * Math.sin(Math::PI * l)
     rgb = Color.oklch_to_srgb(l, chroma, NEUTRAL_TINT_HUE)
-    name = case i
-           when 0 then 'black'
-           when NEUTRAL_STEPS - 1 then 'white'
-           else format('gray%d', i)
-           end
-    Swatch.new(format('%-6s L%.2f', name, l), rgb)
+    key = case i
+          when 0 then :black
+          when NEUTRAL_STEPS - 1 then :white
+          else :"gray#{i}"
+          end
+    Swatch.new(key, format('%-7s L%.2f', key, l), rgb)
   end
 end
 
 # Approximate OKLCH hue angles of familiar colour names, for labelling.
 HUE_NAMES = {
-  'red' => 25.0, 'orange' => 55.0, 'yellow' => 85.0, 'lime' => 115.0,
-  'green' => 145.0, 'teal' => 180.0, 'cyan' => 210.0, 'blue' => 245.0,
-  'violet' => 275.0, 'purple' => 310.0, 'magenta' => 340.0
+  red: 25.0, orange: 55.0, yellow: 85.0, lime: 115.0,
+  green: 145.0, teal: 180.0, cyan: 210.0, blue: 245.0,
+  violet: 275.0, purple: 310.0, magenta: 340.0
 }.freeze
 
 def hue_name(hue)
@@ -149,14 +162,36 @@ def accent_lightness(hue)
   ACCENT_LIGHTNESS + ACCENT_LIGHTNESS_SWING * Math.cos(rad)
 end
 
-def accents
+def accent_hues
   step = 360.0 / ACCENT_COUNT
-  Array.new(ACCENT_COUNT) do |i|
-    hue = (ACCENT_START_HUE + i * step) % 360
-    l = accent_lightness(hue)
-    rgb = Color.oklch_to_srgb(l, ACCENT_CHROMA, hue)
-    Swatch.new(format('%-8s %3d° L%.2f', hue_name(hue), hue.round, l), rgb)
-  end
+  Array.new(ACCENT_COUNT) { |i| (ACCENT_START_HUE + i * step) % 360 }
+end
+
+def accent_swatch(hue, l, c, prefix: nil)
+  key = hue_name(hue)
+  label = format('%-8s %3d° L%.2f', [prefix, key].compact.join(' '), hue.round, l)
+  Swatch.new(key, label, Color.oklch_to_srgb(l, c, hue))
+end
+
+def accents
+  accent_hues.map { |h| accent_swatch(h, accent_lightness(h), ACCENT_CHROMA) }
+end
+
+def brights
+  accent_hues.map { |h| accent_swatch(h, accent_lightness(h) + BRIGHT_LIGHTNESS_BOOST, ACCENT_CHROMA, prefix: 'bright') }
+end
+
+def tints
+  accent_hues.map { |h| accent_swatch(h, TINT_LIGHTNESS, TINT_CHROMA, prefix: 'tint') }
+end
+
+# The whole palette as nested hashes of hex strings, keyed by stable names.
+def palette
+  by_key = ->(swatches) { swatches.to_h { |s| [s.key, s.hex] } }
+  base = by_key.(neutrals).merge(by_key.(accents))
+  bright = by_key.(brights)
+  term = TERMINAL.map { |slot| slot.is_a?(Array) ? bright.fetch(slot[1]) : base.fetch(slot) }
+  { base: base, bright: bright, tint: by_key.(tints), term: term }
 end
 
 # ---------------------------------------------------------------------------
@@ -166,13 +201,27 @@ def render(swatch)
   r, g, b = Color.to_bytes(swatch.rgb)
   l, = Color.rgb_to_oklab(*swatch.rgb)
   fg = l > 0.6 ? '0;0;0' : '255;255;255'
-  "\e[48;2;#{r};#{g};#{b}m\e[38;2;#{fg}m #{swatch.hex} \e[0m #{swatch.name}"
+  "\e[48;2;#{r};#{g};#{b}m\e[38;2;#{fg}m #{swatch.hex} \e[0m #{swatch.label}"
 end
 
 if __FILE__ == $PROGRAM_NAME
   puts 'Neutral gradient'
-  neutral_gradient.each { |s| puts render(s) }
+  neutrals.each { |s| puts render(s) }
   puts
   puts "Accents (L=#{ACCENT_LIGHTNESS}±#{ACCENT_LIGHTNESS_SWING} C=#{ACCENT_CHROMA})"
   accents.each { |s| puts render(s) }
+  puts
+  puts "Bright accents (L+#{BRIGHT_LIGHTNESS_BOOST})"
+  brights.each { |s| puts render(s) }
+  puts
+  puts "Tints (L=#{TINT_LIGHTNESS} C=#{TINT_CHROMA})"
+  tints.each { |s| puts render(s) }
+  puts
+  puts 'Terminal'
+  p = palette
+  p[:term].each_with_index do |hex, i|
+    slot = TERMINAL[i]
+    puts render(Swatch.new(nil, format('%-2d %s', i, slot.is_a?(Array) ? slot.join(' ') : slot),
+                           hex[1..].scan(/../).map { |h| h.to_i(16) / 255.0 }))
+  end
 end
